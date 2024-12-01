@@ -1,46 +1,95 @@
 PennController.ResetPrefix(null);
+SetCounter("setcounter");
+// PreloadZip("https://files.lab.florianschwarz.net/ibexfiles/StimulusArchive/DefTypAnaph.zip");
 
-PreloadZip(
-  "https://files.lab.florianschwarz.net/ibexfiles/StimulusArchive/DefTypAnaphEN.zip"
-);
+DebugOff();
 
-//DebugOff()
+var progressBarText = "Deney Süreci";
+const PROGRESS_SIZE = { w: 300, h: 20 };
 
-Header().log("PROLIFIC_ID", GetURLParameter("id"));
-// void
+var pageCss = {
+  overflow: "auto",
+  padding: "1em",
+  "box-shadow": "4px 4px 2px #cacfd2",
+  border: "1px solid #cacfd2",
+  "border-radius": "2em",
+};
 
-Sequence(
-  "consent",
-  "Start",
-  "audtest",
-  "counter",
-  "Instructions",
-  "preload",
-  rshuffle("critical", "filler1", "filler2"),
-  "Feedback",
-  SendResults(),
-  "end"
-);
+var textCss = {
+  "text-align": "center",
+  margin: "0 auto",
+  // "width": "50em"
+};
+
+var buttonCss = {
+  "background-color": "#E03A3E",
+  color: "white",
+  "font-size": "1.25em",
+  padding: "0.5em",
+  "border-radius": "0.25em",
+  // "width": "4em",
+  margin: "0 auto",
+  "text-align": "center",
+  border: "none", // Remove default button border
+  display: "block", // To center the button
+};
+
+Header().log("PROLIFIC_ID", GetURLParameter("id")),
+
+  Sequence(
+    "consent",
+    "Start",
+    "audtest",
+    "counter",
+    "Instructions",
+    "preload",
+    rshuffle("critical", "filler1", "filler2"),
+    "Feedback",
+    SendResults(),
+    "end"
+  );
 
 CheckPreloaded("critical", "filler1", "filler2").label("preload");
 
 newTrial(
   "consent",
-  newHtml("SonaConsent", "IbexConsentProlific2022.html").print().log(),
-  newButton("Start", "I Consent").print().wait()
+  newText(
+    "consent-body",
+    "<center><b>Deney Onay Formu</b></center>" +
+      "<p>Lütfen <a target='_blank' rel='noopener noreferrer' href='https://utkuturk.com/web_consent_tr.pdf'>bu linke</a> tıklayarak onay formunu indirip inceleyiniz. Bu onay formunu okuyup bu çalışmaya katılmayı kabul ediyorsanız, aşağıdaki 'Kabul Ediyorum' butonuna tıklayın. Bu çalışmaya katılmayı kabul etmiyorsanız, sekmeyi kapatarak bu çalışmadan çıkabilirsiniz. Deney sırasında istediğiniz zaman sekmeyi kapatarak deneyden çıkabilirsiniz. Eğer deneyi tamamlamadan çıkarsanız, zamanınız için herhangi bir ödeme yapılmayacaktır. Herhangi bir sorunla karşılaşırsanız, lütfen bizimle e-posta yoluyla iletişime geçmekten çekinmeyin." +
+      "<br><br><b> Araştırmacılar:</b> <br>Yağmur Sağ Parvardeh, University of Rutgers <i> (yagmur.sag@rutgers.edu)</i> <br>Dorothy Ahn, University of Rutgers"
+  ),
+  newCanvas("consent-page", 600, 400)
+    .add(100, 20, newImage("rutgers.jpg").size("60%", "auto"))
+    .add(0, 150, getText("consent-body"))
+    .cssContainer(pageCss)
+    .print(),
+  newText("<p>").print(),
+  newButton("agree", "Kabul Ediyorum").bold().css(buttonCss).print().wait()
 );
 
 SetCounter("counter", "inc", 1);
 
 newTrial(
   "Start",
+  newText("exp-start-title", "Deneye Başlamak İçin Hazır Mısınız?").bold(),
   newText(
-    "fullscreen",
-    "Click on 'Start' to begin the experiment in fullscreen mode."
-  )
-    .center()
+    "exp-start-body",
+    "<p>Devam etmeden önce, lütfen çok gürültü olmayan ve dikkatinizi toparlayabileceğiniz bir ortamda olduğunuzdan emin olun." +
+      "<p>Hazır olduğunuzda 'Başla'ya basarak deneye başlayabilirsiniz. Otomatik olarak tam ekran moduna geçeceksiniz."
+  ),
+  newCanvas("start-page", 1500, 300)
+    .add(100, 20, newImage("rutgers.jpg").size("60%", "auto"))
+    .add(0, 150, getText("exp-start-title"))
+    .add(0, 180, getText("exp-start-body"))
+    .cssContainer(pageCss)
     .print(),
-  newButton("start", "Start").center().print().wait(),
+  newText("<p>").print(),
+  newButton("Deneye başlamak için Tıklayınız")
+    .bold()
+    .css(buttonCss)
+    .print()
+    .wait(),
   fullscreen()
 );
 
@@ -48,42 +97,43 @@ newTrial(
   "audtest",
   newText(
     "pleez",
-    'Click on the "Play" button to make sure that you can hear audio playback in the experiment. ' +
-      "You can play back the test recording as many times as needed."
-  ).print(),
-  newAudio("testsound", " Test.mp3").center().print().wait(),
-  newButton("strt", "Continue").center().print().wait()
+    "'Oynat' düğmesine tıklayarak ses çalma işlevinin çalıştığını kontrol edin. Test sesini istediğiniz kadar tekrar tekrar  oynatabilirsiniz."
+  ),
+  newAudio("testsound", " Test.mp3").center(),
+  newCanvas("start-page", 1500, 300)
+    .add(100, 20, newImage("rutgers.jpg").size("60%", "auto"))
+    .add(0, 150, getText("pleez"))
+    .add(300, 200, getAudio("testsound"))
+    .cssContainer(pageCss)
+    .print(),
+  newText("<p>").print(),
+  newButton("Devam et")
+    .bold()
+    .css(buttonCss)
+    .print()
+    .wait(getAudio("testsound").test.hasPlayed().failure(newText("Lütfen devam etmeden önce sesi kontrol edin.")))
 );
+
+
 
 newTrial(
   "Instructions",
 
   newText(
     "Intro1",
-    "<p>(To read on, press any key!!)</p>" +
-      "<p>In this experiment, you are the assistant to a play in a simple game. In the game, " +
-      "there are two players. Each round, six pictures will be laid out. Each player has to " +
-      "collect pictures in particular categories. For this, they receive two category cards: " +
-      "one for a general category (e.g., 'animals') and one for a more specific category " +
-      "(e.g., 'fire truck'). In addition, before choosing a picture on their turn, they get " +
-      "a third category card from a mixed stack, which can be general or specific. When it's " +
-      "a player's turn, they must choose a picture that fits the categories they have as well as " +
-      "possible. Pictures for specific categories count for more points. When a picture for " +
-      "a given category has been selected, the category card is discarded (and replaced " +
-      "next round).</p>"
+    "<p>(Bir sonraki kısmı okumak için 'boşluk' tuşuna basınız!)</p>" +
+      "<p>Bu çalışmada, basit bir oyunda  asistan rolünü oynayacaksınız. Oyunda iki oyuncu olacak. Her turda altı resim sunulacak. Her oyuncu kendilerine verilecek belirli kategorilerdeki resimleri toplamalıdır. Kategoriler, verilecek iki kategori kartı ile belirlenecek. Bu kart ya genel kategori kartı olabilir (örneğin 'hayvanlar') ya da spesifik bir kategori kartı olabilir (örneğin 'itfaiye aracı')." +
+      "<p>Kendi sıralarında bir resim seçmeden önce, üçüncü bir kategoriden bir kart daha sunulacak. Bu üçüncü kategori karılmış bir desteden gelecek ve genel ya da spesifik bir kart olabilir. Sırası gelen oyuncu, elindeki kategorilere en uygun resmi seçmelidir. Spesifik kategoriden olan resimler daha fazla puan değerindedir. Verilen kategori kartı için resim seçildikten sonra, kategori kartı atılacak (ve sonraki turda yeni bir kart gelecektir)."
   ).print(),
-  newKey("space1", "").wait(),
+  newKey("space1", " ").wait(),
   newText(
     "Intro2",
-    "<p>Fortunately, you don't have to worry about the details of the rules of the game too much. " +
-      "Your task is simply to help the player you are assisting and select the pictures " +
-      "they are asking for by clicking on them.</p>"
+    "<p>Neyse ki, sizin oyunun kurallarıyla çok fazla ilgilenmenize gerek yok. Göreviniz sadece asistanı olduğunuz oyuncuya yardım etmek ve istedikleri resimleri tıklayarak seçmektir."
   ).print(),
   newKey("space2", "").wait(),
   newText(
     "Intro3",
-    "<p>You first see how the other player is making their choice, and an additional card " +
-      "is removed.</p>"
+    "<p>İlk olarak, diğer oyuncunun seçimini hangi yönde yapacağını göreceksiniz. Diğer oyuncunun seçimine ek olarak ekstra bir kart daha  atılacaktır.</p>"
   ).print(),
   defaultImage.size(1500, 350),
   newKey("space2b", "").wait(),
@@ -98,18 +148,23 @@ newTrial(
   // newTimer("Example3", 1000)
   //     .start()
   //     .wait()
-  newKey("space3", "").wait(),
+  newKey("space3", " ").wait(),
   getImage("Example3").remove(),
   newText(
     "Intro4",
-    "<p> While the other player is making their decision, you'll hear comments from your " +
-      "player on the cards that are available. When it's your player's turn, new cards are " +
-      "added, and your player will tell you which card to select for them by clicking on it.</p>"
+    "<p>Diğer oyuncu kararını verirken, asistanı olduğunuz oyuncudan  mevcut kartlar hakkında yorumlar duyacaksınız. Oyuncunuzun sırası geldiğinde, ortaya yeni kartlar eklenir ve oyuncunuz size hangi kartı seçeceğinizi söyleyecektir. <b>Sizden oyuncunuzun söylediği karta tıklamanız beklenmektedir.</b>"
   ).print(),
 
-  newKey("space4", "").wait(),
-  newText("Intro5", "<p>That's all - easy, and off we go!</p>").print(),
-  newButton("Begin", "Start Experiment").print().wait()
+  newKey("space4", " ").wait(),
+  newText(
+    "Intro5",
+    "<p>Oyunun talimatları bu kadar! Kolay gelsin, şansınız bol olsun!</p>"
+  ).print(),
+  newButton("Oyunu Başlatın!")
+    .bold()
+    .css(buttonCss)
+    .print()
+    .wait()
 );
 
 Template((row) =>
@@ -212,40 +267,14 @@ Template((row) =>
     newTimer("Timer2", 500).start().wait(),
     getImage("I2_2").visible(),
     getImage("I4_2").visible(),
-    // getCanvas("Display")
-    //     .remove()
-    // //clear()
-    // ,
-    // newCanvas("Display2", 1500, 350)
-    //     .add( "center at 10.5%" , "middle at 21.5%" , getImage("I1") )
-    //     //.add( "center at 48.5%" , "middle at 21.5%" , getImage("I2") )
-    //     .add( "center at 48.5%" , "middle at 21.5%" , getImage("I2_2").visible())
-    //     .add( "center at 89.5%" , "middle at 21.5%" , getImage("I3") )
-    //     //.add( "center at 10.5%" , "middle at 78.5%" , getImage("I4") )
-    //     .add( "center at 10.5%" , "middle at 78.5%" , getImage("I4_2").visible())
-    //     .add( "center at 48.5%" , "middle at 78.5%" , getImage("I5") )
-    //     .add( "center at 89.5%" , "middle at 78.5%" , getImage("I6") )
-    //     .print()
-    // ,
 
-    // newSelector("Grid2")
-    //     .add(getImage("I1"))
-    //     //.add(getImage("I2"))
-    //     .add(getImage("I2_2"))
-    //     .add(getImage("I3"))
-    //     //.add(getImage("I4"))
-    //     .add(getImage("I4_2"))
-    //     .add(getImage("I5"))
-    //     .add(getImage("I6"))
-    //     .shuffle()
-    //     .frame("solid 5px blue")
-    // ,
+
     getSelector("Grid").frame("solid 5px blue"),
-    // getCanvas("Display2")
-    //     .print()
+
+
     newTimer("Timer3", 1000).start().wait(),
     newAudio("Sen", row.Sen_file).log().play(),
-    //.wait()
+
     getSelector("Grid").log().wait(),
     getAudio("Sen").wait("first"),
     newTimer("End", 500).start().wait(),
@@ -264,7 +293,7 @@ Template((row) =>
     "Feedback",
     newTextInput(
       "Bemerkenswertes",
-      "Was there anything in particular or something remarkable that you noticed, or do you have any other comments for us?"
+      "Deney esnasında dikkanizi çeken bir şey oldu mu? Oyun hakkında bir yorumunuz var mı?"
     )
       .log()
       .lines(0)
@@ -272,30 +301,28 @@ Template((row) =>
       .print(),
     newTextInput(
       "Design",
-      "Do you have any idea what the experiment was about?"
+      "Çalışmanın ne hakkında olduğu ile ilgili bir tahmininiz var mıydı? Eğer varsa, lütfen buraya yazınız."
     )
       .log()
       .lines(0)
       .size(600, 300)
       .print(),
-    newButton("Finish", "Send comments").print().wait()
+    newButton("Yorumlarınızı gönderin!").bold().css(buttonCss).print().wait()
   ),
   // Final screen
   newTrial(
     "end",
-    newText("Thanks for your participation!").center().print(),
-    // This link a placeholder: replace it with a URL provided by your participant-pooling platform
+    exitFullscreen(),
+    newText("Katıldığınız için teşekkür ederiz!").center().print(),
     newText(
-      "<p><a href='https://app.prolific.co/submissions/complete?cc=23AAA8F2' target='_blank'>Click here to validate your submission on Prolific (necessary for payment!).</a></p>"
+      "<p><a href='XXXXXX' target='_blank'>Katılımınızı Prolific'te onaylamak için buraya tıklayın!</a></p>"
     )
       .center()
       .print(),
     newText(
-      "<p>The link will open a new tab redirecting you to Prolific. After participation on Prolific has been confirmed, you may close the present window.</p>"
+      "<p>Bu bağlantı yeni bir pencere açar ve sizi Prolific'e geri yönlendirir. Katılımınız Prolific'te onaylandıktan sonra, bu pencereyi kapatabilirsiniz.</p>"
     )
       .center()
       .print(),
-
-    // Trick: stay on this trial forever (until tab is closed)
     newButton().wait()
   );
