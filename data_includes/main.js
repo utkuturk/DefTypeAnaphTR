@@ -2,6 +2,13 @@ PennController.ResetPrefix(null);
 SetCounter("setcounter");
 // PreloadZip("https://files.lab.florianschwarz.net/ibexfiles/StimulusArchive/DefTypAnaph.zip");
 
+
+PreloadZip(
+  "https://raw.githubusercontent.com/utkuturk/DefTypeAnaphTR/main/pictures.zip",
+  "https://raw.githubusercontent.com/utkuturk/DefTypeAnaphTR/main/sounds.zip"
+);
+
+
 DebugOff();
 
 var progressBarText = "Deney Süreci";
@@ -99,7 +106,7 @@ newTrial(
     "pleez",
     "'Oynat' düğmesine tıklayarak ses çalma işlevinin çalıştığını kontrol edin. Test sesini istediğiniz kadar tekrar tekrar  oynatabilirsiniz."
   ),
-  newAudio("testsound", " Test.mp3").center(),
+  newAudio("testsound", "Test.mp3").center(),
   newCanvas("start-page", 1500, 300)
     .add(100, 20, newImage("rutgers.jpg").size("60%", "auto"))
     .add(0, 150, getText("pleez"))
