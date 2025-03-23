@@ -1,0 +1,171 @@
+---
+title: "DefTypNormTR Results"
+format: pdf
+---
+
+# Preparing the data
+
+```{r}
+# packages
+library(Rmisc)
+library(tidyverse)
+library(magrittr)
+library(brms)
+library(bridgesampling)
+
+#pcibex reading
+source("read_pcibex.R")
+df <- read.pcibex("results.csv")
+
+# better column names
+colnames(df) <- c("Time", "IP", "Controller", "Order", "ElementNum", "Label", "Group", "PennElementType", "PennElementName", "Parameter", "Value", "EventTime", "ProlificID", "item", "Group", "Type", "Typ_Order", "DefType", "Antecedent", "Ref", "Comments")
+
+
+# retrieve the response times
+df_rt <- df |> subset((PennElementType == "Selector" | Parameter == "play") & Type == "critical")
+
+df_rt <- df_rt |>
+    select(ProlificID, Parameter, item, EventTime) |>
+    pivot_wider(names_from = Parameter, values_from = EventTime)
+
+
+
+# only select selecions and critical items
+# ! TODO: Check filler responses in the future.
+df <- df |> subset(PennElementType == "Selector" & Type == "critical")
+
+# check if left_join is working properly
+stopifnot(nrow(df) == nrow(left_join(df, df_rt, by = c("ProlificID", "item"))))
+
+# join RTs and selections
+df <- left_join(df, df_rt, by = c("ProlificID", "item"))
+df$DefType <- "TR"
+
+n_subj <- length(unique(df$ProlificID))
+n_subj
+
+# number of non-answers
+no_answer <- nrow(subset(df, !(Value == "I1" | Value == "I2")))
+no_answer
+
+df <- df |> subset( Value == "I1" | Value == "I2")
+
+
+# new column for the selection of Typ
+df$Typ <- (df$Typ_Order == "Typ_Atyp" & df$Value == "I1") | (df$Typ_Order == "Atyp_Typ" & df$Value == "I2")
+
+# Check mean proportion of typical answer as a function of condition
+df %>%
+    group_by(Typ_Order) %>%
+    summarize(Typ = mean(Typ == "TRUE"), n = length(Value))
+
+df$TypN <- as.numeric(df$Typ)
+
+```
+
+```{r}
+avgs <- summarySEwithin(df, measurevar = "TypN", withinvars = c("DefType", "Typ_Order"), idvar = "ProlificID", na.rm = TRUE)
+avgs
+
+# do a plot with geom point and geom line and error bars using avgs
+ggplot(avgs, aes(Typ_Order, TypN)) +
+    geom_point() +
+    geom_line() +
+    geom_errorbar(aes(ymin = TypN - 1.96*se, ymax = TypN + 1.96*se), width = 0.2)
+
+
+
+```
+
+```{r}
+# get the Response time from selection time and play time
+df$Selection <- as.numeric(df$Selection)
+df$play <- as.numeric(df$play)
+df$RT <- df$Selection - df$play
+
+# percentage of really long response times
+nrow(subset(df, RT > 10000)) / nrow(df)
+
+# filter out really long response times and get the averages
+rt_avgs <- df %>%
+    filter(RT < 10000) %>%
+    summarySEwithin(., measurevar = "RT", withinvars = c("Typ", "DefType", "Typ_Order"), idvar = "ProlificID", na.rm = TRUE)
+rt_avgs
+
+# plot the credible intervals and means
+ggplot(rt_avgs, aes(Typ, RT)) +
+    geom_point() +
+    geom_line() +
+    geom_errorbar(aes(ymin = RT - 1.96*se, ymax = RT + 1.96*se), width = 0.2) +
+    facet_wrap(~Typ_Order)
+
+
+
+```
+
+
+```{r}
+# read typdatadiff to include in the model
+diff <- read_csv("TypDataItemDiff.csv")
+df$item <- as.factor(df$item)
+diff$item <- as.factor(diff$item)
+
+
+# join differences in typicality and our experient data
+stopifnot(nrow(left_join(df, diff, by = "item")) == nrow(df))
+df <- left_join(df, diff, by = "item")
+
+
+df$Typ_Order <- as.factor(df$Typ_Order)
+contrasts(df$Typ_Order) <- contr.sum(2) / 2
+
+# fit models with interaction and no interactions.
+
+m.int <- brm(Typ ~ Typ_Order * Diff + (Typ_Order * Diff | ProlificID) + (Typ_Order * Diff | item),
+    data = df,
+    family = bernoulli("probit"),
+    chains = 4, cores = 8,
+    iter = 12000, warmup = 2000, control = list(adapt_delta = 0.99),
+    file = "Typ_int_full", save_pars = save_pars(all = TRUE)
+)
+
+
+m.noint <- brm(Typ ~ Typ_Order + Diff + (Typ_Order + Diff | ProlificID)+ (Typ_Order + Diff | item),
+    data = df,
+    family = bernoulli("probit"),
+    chains = 4, cores = 8,
+    iter = 12000, warmup = 2000, control = list(adapt_delta = 0.99),
+    file = "Typ_no_int_full", save_pars = save_pars(all = TRUE)
+)
+```
+
+```{r}
+# compare model using bridgesampling
+
+# compute log marginal likelihood via bridge sampling for H0
+H0.bridge <- bridge_sampler(m.int, silent = TRUE)
+
+# compute log marginal likelihood via bridge sampling for H1
+H1.bridge <- bridge_sampler(m.noint, silent = TRUE)
+
+# compute percentage errors to compute an approximate percentage error of the estimates:
+(H0.error <- error_measures(H0.bridge)$percentage)
+(H1.error <- error_measures(H1.bridge)$percentage)
+
+
+# compute Bayes factor, H! is preferred
+BF <- exp(H0.bridge$logml - H1.bridge$logml)
+print(BF)
+# strong evidence against H0 (the null hypothesis) and in favor of H1
+
+
+# compute posterior model probabilities (assuming equal prior model probabilities)
+post1 <- post_prob(H0.bridge, H1.bridge)
+print(post1)
+# 99 percent probability for H1 to be true if their initial probabilities are 0.5-0.5
+# Maybe one can use other experiments to give a more informed probability
+
+# compute posterior model probabilities (using specified prior model probabilities)
+# post2 <- post_prob(H0.bridge, H1.bridge, prior_prob = c(.6, .4))
+# print(post2)
+```

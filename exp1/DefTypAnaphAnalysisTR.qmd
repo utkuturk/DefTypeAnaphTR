@@ -1,0 +1,474 @@
+---
+title: "Main Experiment Analysis in Turkish"
+author: "Utku Turk & Yagmur Sag"
+format: 
+  html:
+    self-contained: true
+execute:
+  echo: true
+  warning: false
+  error: false
+  cache: true
+figures:
+  fig-width: 6
+  fig-height: 4
+  fig-align: center
+  fig-format: png
+params:
+  bayes: true
+---
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{css, echo=FALSE}
+.table, th, td {
+  font-size: 0.9em;
+} 
+.table tbody td, .table thead tr {
+    white-space: nowrap;
+}
+```
+
+
+I will first go over the way others did the analysis just to have an easier way to compare results between languages. See the second section for a Bayesian Analysis.
+
+## Original Analysis
+
+```{r}
+
+library(plyr)
+library(tidyverse)
+library(lme4)
+library(lmerTest)
+library(emmeans)
+
+read.pcibex <- function(filepath, auto.colnames=TRUE, fun.col=function(col,cols){cols[cols==col]<-paste(col,"Ibex",sep=".");return(cols)}) {
+  n.cols <- max(count.fields(filepath,sep=",",quote=NULL),na.rm=TRUE)
+  if (auto.colnames){
+    cols <- c()
+    con <- file(filepath, "r")
+    while ( TRUE ) {
+      line <- readLines(con, n = 1, warn=FALSE)
+      if ( length(line) == 0) {
+        break
+      }
+      m <- regmatches(line,regexec("^# (\\d+)\\. (.+)\\.$",line))[[1]]
+      if (length(m) == 3) {
+        index <- as.numeric(m[2])
+        value <- m[3]
+        if (index < length(cols)){
+          cols <- c()
+        }
+        if (is.function(fun.col)){
+          cols <- fun.col(value,cols)
+        }
+        cols[index] <- value
+        if (index == n.cols){
+          break
+        }
+      }
+    }
+    close(con)
+    return(read.csv(filepath, comment.char="#", header=FALSE, col.names=cols))
+  }
+  else{
+    return(read.csv(filepath, comment.char="#", header=FALSE, col.names=seq(1:n.cols)))
+  }
+}
+
+Data <- read.pcibex("./Data/TR/results.csv", auto.colnames=FALSE)
+
+
+colnames(Data) <- c("Time", "IP", "Controller", "Order", "ElementNum", "Label", "Group", "PennElementType", "PennElementName", "Parameter", "Value", "EventTime", "ProlificID", "item", "Group", "Type", "Typ_Order", "DefType", "Antecedent", "Ref", "Comments")
+
+
+
+#DefTypAnaphData <- Data %>%
+#    filter(PennElementType=="Selector")
+
+DTATRRT <- subset(Data, (PennElementType=="Selector"|Parameter=="play") & Type=="critical")
+
+DTATRRT <- DTATRRT %>%
+  select(ProlificID, Parameter, item, EventTime) %>%
+  pivot_wider(names_from = Parameter, values_from = EventTime)
+
+
+
+
+DTATR <- subset(Data, PennElementType=="Selector" & Type=="critical")
+
+nrow(DTATR)
+nrow(left_join(DTATR, DTATRRT, by=c("ProlificID", "item")))
+
+DTATR <- left_join(DTATR, DTATRRT, by=c("ProlificID", "item"))
+DTATR$DefType <- "TR"
+
+length(unique(DTATR$ProlificID))
+#46
+
+nrow(subset(DTATR, !(Value=="I1" | Value=="I2")))
+#1
+
+DTATR <- subset(DTATR, Value=="I1" | Value=="I2")
+
+
+
+DTATR$Typ <- (DTATR$Typ_Order=="Typ_Atyp" & DTATR$Value=="I1") | (DTATR$Typ_Order=="Atyp_Typ" & DTATR$Value=="I2")
+
+
+DTATR %>%
+  group_by(Typ_Order) %>%
+  summarize(Typ=mean(Typ=="TRUE"), n=length(Value))
+
+DTATR$TypN <- as.numeric(DTATR$Typ)
+
+ggplot(DTATR, aes(DefType, TypN, fill=Typ_Order )) +
+  stat_summary(fun="mean", geom="bar", position="dodge")
+
+
+# RTs:
+
+DTATR$Selection <- as.numeric(DTATR$Selection)
+DTATR$play <- as.numeric(DTATR$play)
+DTATR$RT <- DTATR$Selection-DTATR$play
+
+nrow(subset(DTATR, RT > 10000))/nrow(DTATR)
+
+DTATR %>%
+  filter(RT < 10000) %>%
+  group_by(DefType, Typ_Order, Typ) %>%
+  summarize(RT=mean(RT), n=length(Value))
+
+
+
+ggplot(subset(DTATR, RT < 10000), aes(DefType, RT, fill= Typ )) +
+  stat_summary(fun="mean", geom="bar", position="dodge") + 
+  facet_wrap(~Typ_Order)
+
+
+
+ggplot(subset(DTATR, RT < 10000), aes(DefType, TypN, fill=Typ_Order )) +
+  stat_summary(fun="mean", geom="bar", position="dodge")
+
+
+
+```
+```{r}
+myCenter= function(x) {
+  if (is.numeric(x)) { return(x - mean(x, na.rm=T)) }
+  if (is.factor(x)) {
+    x= as.numeric(x)
+    return(x - mean(x, na.rm=T))
+  }
+  if (is.data.frame(x) || is.matrix(x)) {
+    m= matrix(nrow=nrow(x), ncol=ncol(x))
+    colnames(m)= paste("c", colnames(x), sep="")
+    for (i in 1:ncol(x)) {
+      m[,i]= myCenter(x[,i])
+    }
+    return(as.data.frame(m))
+  }
+}
+
+DTATR$DefTypeC <- 0
+DTATR$Typ_OrderC <- myCenter(as.factor(as.character(DTATR$Typ_Order)))
+
+
+
+```
+
+
+```{r}
+
+nrow(DTATR)
+TypDataItemDiff <- read_csv("./Data/TypNormTR/TypDataItemDiffTR.csv")
+TypDataItemDiff$item <- as.factor(TypDataItemDiff$item)
+DTATR$item <- as.factor(DTATR$item)
+nrow(left_join(DTATR, TypDataItemDiff, by="item"))
+
+
+DTATR <- left_join(DTATR, TypDataItemDiff, by="item")
+
+DTATR$ProlificID <- as.factor(DTATR$ProlificID)
+
+summary(glmer(Typ ~   Diff + (1|ProlificID) + (1|item), data=subset(DTATR, Typ_Order=="Atyp_Typ"), family="binomial"))
+
+
+
+DefTypENDiff.lmer <- glmer(Typ ~  Typ_OrderC + Diff  + (1|ProlificID) +(1|item) , data=DTATR, family="binomial")
+summary(DefTypENDiff.lmer)
+
+
+DefTypENDiffAtypTyp.lmer1 <- glmer(Typ ~ Typ_OrderC * Diff  + (1|ProlificID) , data=DTATR, family="binomial")
+summary(DefTypENDiffAtypTyp.lmer1)
+
+DefTypENDiffAtypTyp.lmer2 <- glmer(Typ ~ Typ_OrderC + Diff  + (1|ProlificID) , data=DTATR, family="binomial")
+summary(DefTypENDiffAtypTyp.lmer2)
+
+#Smaller BIC/AIC = Better 
+anova(DefTypENDiffAtypTyp.lmer1,DefTypENDiffAtypTyp.lmer2)
+# ( seems like non-interaction model is better )
+
+
+DTATRItem <- DTATR %>%
+  select(item, DefType, Typ_Order, Typ, Diff) %>%
+  group_by(item, DefType, Typ_Order) %>%
+  summarize(TypMean=mean(Typ), Diff=mean(Diff))
+
+ggplot(DTATRItem, aes(Diff, TypMean)) +
+  geom_jitter() +
+  geom_smooth(method="lm") +
+  facet_wrap(~Typ_Order)
+
+
+ggplot(subset(DTATRItem, Typ_Order=="Atyp_Typ"), aes(Diff, TypMean)) +
+  geom_point() +
+  geom_smooth(method="lm") +
+  facet_wrap(~DefType)
+
+
+```
+
+
+## Bayesian Analysis
+
+Since the data distribution is Bernoulli and there are small clusters, the mixed model with random intercepts and without random slopes is not the best choice. It may end up extremely misleading. One thing to do is to use adaptive Gauss-Hermite quadrature or have a Bayesian approach that uses MCMC sampling that handles these integrals a lot better.
+
+
+Do not forget to change `bayes` parameter to true in the quarto file.
+
+```{r}  
+#| eval: !expr params$bayes
+#| echo: !expr params$bayes
+# Clear environment before starting the Bayesian Analysis
+rm(list=setdiff(ls(), "params"))
+```
+
+
+```{r}
+#| eval: !expr params$bayes
+#| echo: !expr params$bayes
+# packages
+library(Rmisc)
+library(tidyverse)
+library(magrittr)
+library(brms)
+library(bridgesampling)
+
+#pcibex reading
+
+read.pcibex <- function(filepath, auto.colnames=TRUE, fun.col=function(col,cols){cols[cols==col]<-paste(col,"Ibex",sep=".");return(cols)}) {
+  n.cols <- max(count.fields(filepath,sep=",",quote=NULL),na.rm=TRUE)
+  if (auto.colnames){
+    cols <- c()
+    con <- file(filepath, "r")
+    while ( TRUE ) {
+      line <- readLines(con, n = 1, warn=FALSE)
+      if ( length(line) == 0) {
+        break
+      }
+      m <- regmatches(line,regexec("^# (\\d+)\\. (.+)\\.$",line))[[1]]
+      if (length(m) == 3) {
+        index <- as.numeric(m[2])
+        value <- m[3]
+        if (index < length(cols)){
+          cols <- c()
+        }
+        if (is.function(fun.col)){
+          cols <- fun.col(value,cols)
+        }
+        cols[index] <- value
+        if (index == n.cols){
+          break
+        }
+      }
+    }
+    close(con)
+    return(read.csv(filepath, comment.char="#", header=FALSE, col.names=cols))
+  }
+  else{
+    return(read.csv(filepath, comment.char="#", header=FALSE, col.names=seq(1:n.cols)))
+  }
+}
+df <- read.pcibex("results.csv")
+
+# better column names
+colnames(df) <- c("Time", "IP", "Controller", "Order", "ElementNum", "Label", "Group", "PennElementType", "PennElementName", "Parameter", "Value", "EventTime", "ProlificID", "item", "Group", "Type", "Typ_Order", "DefType", "Antecedent", "Ref", "Comments")
+
+
+# retrieve the response times
+df_rt <- df |> subset((PennElementType == "Selector" | Parameter == "play") & Type == "critical")
+
+df_rt <- df_rt |>
+    select(ProlificID, Parameter, item, EventTime) |>
+    pivot_wider(names_from = Parameter, values_from = EventTime)
+
+
+
+# only select selecions and critical items
+# ! TODO: Check filler responses in the future.
+df <- df |> subset(PennElementType == "Selector" & Type == "critical")
+
+# check if left_join is working properly
+stopifnot(nrow(df) == nrow(left_join(df, df_rt, by = c("ProlificID", "item"))))
+
+# join RTs and selections
+df <- left_join(df, df_rt, by = c("ProlificID", "item"))
+df$DefType <- "TR"
+
+n_subj <- length(unique(df$ProlificID))
+n_subj
+
+# number of non-answers
+no_answer <- nrow(subset(df, !(Value == "I1" | Value == "I2")))
+no_answer
+
+df <- df |> subset( Value == "I1" | Value == "I2")
+
+
+# new column for the selection of Typ
+df$Typ <- (df$Typ_Order == "Typ_Atyp" & df$Value == "I1") | (df$Typ_Order == "Atyp_Typ" & df$Value == "I2")
+
+# Check mean proportion of typical answer as a function of condition
+df %>%
+    group_by(Typ_Order) %>%
+    summarize(Typ = mean(Typ == "TRUE"), n = length(Value))
+
+df$TypN <- as.numeric(df$Typ)
+
+```
+
+```{r}
+#| eval: !expr params$bayes
+#| echo: !expr params$bayes
+avgs <- summarySEwithin(df, measurevar = "TypN", withinvars = c("DefType", "Typ_Order"), idvar = "ProlificID", na.rm = TRUE)
+avgs
+
+# do a plot with geom point and geom line and error bars using avgs
+ggplot(avgs, aes(Typ_Order, TypN)) +
+    geom_point() +
+    geom_line() +
+    geom_errorbar(aes(ymin = TypN - 1.96*se, ymax = TypN + 1.96*se), width = 0.2)
+
+
+
+```
+
+```{r}
+#| eval: !expr params$bayes
+#| echo: !expr params$bayes
+# get the Response time from selection time and play time
+df$Selection <- as.numeric(df$Selection)
+df$play <- as.numeric(df$play)
+df$RT <- df$Selection - df$play
+
+# percentage of really long response times
+nrow(subset(df, RT > 10000)) / nrow(df)
+
+# filter out really long response times and get the averages
+rt_avgs <- df %>%
+    filter(RT < 10000) %>%
+    summarySEwithin(., measurevar = "RT", withinvars = c("Typ", "DefType", "Typ_Order"), idvar = "ProlificID", na.rm = TRUE)
+rt_avgs
+
+# plot the credible intervals and means
+ggplot(rt_avgs, aes(Typ, RT)) +
+    geom_point() +
+    geom_line() +
+    geom_errorbar(aes(ymin = RT - 1.96*se, ymax = RT + 1.96*se), width = 0.2) +
+    facet_wrap(~Typ_Order)
+
+
+
+```
+
+```{r}
+#| eval: !expr params$bayes
+#| echo: !expr params$bayes
+# read typdatadiff to include in the model
+diff <- read_csv("./Data/TypNormTR/TypDataItemDiffTR.csv")
+df$item <- as.factor(df$item)
+diff$item <- as.factor(diff$item)
+
+
+# join differences in typicality and our experient data
+stopifnot(nrow(left_join(df, diff, by = "item")) == nrow(df))
+df <- left_join(df, diff, by = "item")
+
+
+df$Typ_Order <- as.factor(df$Typ_Order)
+contrasts(df$Typ_Order) <- contr.sum(2) / 2
+
+# fit models with interaction and no interactions.
+
+m.int <- brm(Typ ~ Typ_Order * Diff + (Typ_Order * Diff | ProlificID) + (Typ_Order * Diff | item),
+    data = df,
+    family = bernoulli("probit"),
+    chains = 4, cores = 8,
+    iter = 12000, warmup = 2000, control = list(adapt_delta = 0.99),
+    refresh = 0, silent = 2,
+    file = "./Data/TR/Typ_int_full", save_pars = save_pars(all = TRUE)
+)
+
+
+m.noint <- brm(Typ ~ Typ_Order + Diff + (Typ_Order + Diff | ProlificID)+ (Typ_Order + Diff | item),
+    data = df,
+    family = bernoulli("probit"),
+    chains = 4, cores = 8,
+    iter = 12000, warmup = 2000, control = list(adapt_delta = 0.99),
+    refresh = 0, silent = 2,
+    file = "./Data/TR/Typ_no_int_full", save_pars = save_pars(all = TRUE)
+)
+
+models <- list("Interaction" = m.int, "No Interaction" = m.noint)
+
+
+modelsummary::modelsummary(
+  models, fmt = 2,
+  estimate = "{estimate}", statistic = "conf.int",
+  coef_rename = \(x) gsub("b_", "", x),
+  coef_omit = "Intercept|^sd|^cor",
+  metrics = "common")
+
+
+modelsummary::modelplot(models, 
+          coef_rename = \(x) gsub("b_", "", x),
+          coef_omit = "Intercept|^sd|^cor", metrics = "common")
+```
+
+
+```{r}
+#| eval: !expr params$bayes
+#| echo: !expr params$bayes
+# compare model using bridgesampling
+
+# compute log marginal likelihood via bridge sampling for H0
+H0.bridge <- bridge_sampler(m.int, silent = TRUE)
+
+# compute log marginal likelihood via bridge sampling for H1
+H1.bridge <- bridge_sampler(m.noint, silent = TRUE)
+
+# compute percentage errors to compute an approximate percentage error of the estimates:
+(H0.error <- error_measures(H0.bridge)$percentage)
+(H1.error <- error_measures(H1.bridge)$percentage)
+
+
+# compute Bayes factor, H! is preferred
+BF <- exp(H0.bridge$logml - H1.bridge$logml)
+print(BF)
+# strong evidence against H0 (the null hypothesis) and in favor of H1
+
+
+# compute posterior model probabilities (assuming equal prior model probabilities)
+post1 <- post_prob(H0.bridge, H1.bridge)
+print(post1)
+# 99 percent probability for H1 to be true if their initial probabilities are 0.5-0.5
+# Maybe one can use other experiments to give a more informed probability
+
+# compute posterior model probabilities (using specified prior model probabilities)
+# TODO: compute the a priori likelihood of H0 vs H1 using other experiments from other languages and include it here as prior_prob. 
+# post2 <- post_prob(H0.bridge, H1.bridge, prior_prob = c(.6, .4))
+# print(post2)
+```

@@ -1,0 +1,4 @@
+*.rds
+./chunk_includes/*.jpg
+./chunk_includes/*.mp3
+.Rproj.user
